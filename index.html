@@ -651,15 +651,16 @@ async function runImport(){
 }
 
 async function clearQuarantine(btn){
-  var id=btn.dataset.id, sku=btn.dataset.sku, qty=parseInt(btn.dataset.qty);
+  var id=btn.dataset.id||'';
+  var sku=btn.dataset.sku||'';
+  var qty=parseInt(btn.dataset.qty)||0;
+  if(!id){alert('Error: missing record ID.');return;}
   if(!confirm('Clear '+qty+' x '+sku+' from quarantine? This cannot be undone.')) return;
   try{
-    // Delete the quarantine movement record
     await db.collection('movements').doc(id).delete();
-    // Log a clearance record
     await db.collection('movements').add({
-      bin:'QUARANTINE',toBin:'QUARANTINE',sku:sku,type:'cleared',qty:qty,expiry:'',
-      ref:'Quarantine clearance',by:currentUser,valby:'',
+      bin:'QUARANTINE',toBin:'QUARANTINE',sku:sku||'unknown',type:'cleared',qty:qty,expiry:'',
+      ref:'Quarantine clearance',by:currentUser||'',valby:'',
       notes:'Cleared from quarantine',date:new Date().toISOString()
     });
     alert(qty+' x '+sku+' cleared from quarantine.');
