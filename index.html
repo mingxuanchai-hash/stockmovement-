@@ -113,6 +113,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
     <button class="nav-btn" onclick="showTab('bins',this)">Stock by bin</button>
     <button class="nav-btn" onclick="showTab('movement',this)">In / Out form</button>
     <button class="nav-btn" id="nav-expiry" onclick="showTab('expiry',this)">Expiry tracking</button>
+    <button class="nav-btn" id="nav-quarantine" onclick="showTab('quarantine',this)">Quarantine</button>
     <button class="nav-btn" onclick="showTab('log',this)">Movement log</button>
     <button class="nav-btn" style="color:#c0392b;font-weight:700;background:#fdecea;border-radius:6px;padding:6px 14px;margin:8px 0 8px 8px" onclick="showTab('import',this)">⬆ Import data</button>
   </div>
@@ -121,6 +122,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
     <div id="tab-dashboard" class="tab-section active">
       <div class="metrics" id="dash-metrics"></div>
       <div id="dash-alerts"></div>
+      <div id="dash-quarantine"></div>
       <div class="card">
         <div class="card-title">Live stock by bin</div>
         <div class="filter-row">
@@ -234,6 +236,18 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
       </div>
     </div>
 
+    <div id="tab-quarantine" class="tab-section">
+      <div class="metrics" id="quar-metrics"></div>
+      <div class="card" style="border-color:#f5e0a0">
+        <div class="card-title" style="color:var(--warn)">&#9888; Items in quarantine</div>
+        <div class="filter-row">
+          <input id="quar-search" placeholder="Search SKU or bin..." oninput="renderQuarantine()">
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Date &amp; time</th><th>Bin</th><th>SKU</th><th>Qty</th><th>Expiry</th><th>Reference</th><th>Entry by</th><th>Notes</th></tr></thead><tbody id="quar-tbody"></tbody></table></div>
+      </div>
+      <div style="margin-top:4px"><button class="btn btn-sm" onclick="exportCSV('quarantine')">Export quarantine CSV</button></div>
+    </div>
+
     <div id="tab-import" class="tab-section">
       <div class="card" style="max-width:500px;margin:0 auto">
         <div class="card-title">One-time data import</div>
@@ -339,6 +353,7 @@ function initFirestore(){
     movements=snap.docs.map(d=>({...d.data(),_id:d.id}));
     if(document.getElementById('tab-log').classList.contains('active'))renderLog();
     updateLastActivity();
+    updateQuarantineNav();
   },err=>console.error(err));
 }
 
@@ -352,6 +367,12 @@ function showTab(t,btn){
   if(t==='movement')document.getElementById('m-by').value=currentUser;
   if(t==='expiry')renderExpiry();
   if(t==='log')renderLog();
+  if(t==='quarantine')renderQuarantine();
+}
+function updateQuarantineNav(){
+  var c=movements.filter(function(m){return m.type==='quarantine';}).length;
+  var btn=document.getElementById('nav-quarantine');
+  if(btn) btn.textContent='Quarantine'+(c?(' ('+c+')'):'');
 }
 function updateExpiryNav(){
   const c=bins.filter(b=>['crit','expired'].includes(expStatus(b.expiry))).length;
@@ -482,12 +503,30 @@ function populateZones(){
 function renderDashboard(){
   populateZones();
   const totalQty=bins.reduce((s,b)=>s+b.qty,0),exp=bins.filter(b=>expStatus(b.expiry)==='expired').length,crit=bins.filter(b=>expStatus(b.expiry)==='crit').length,warn=bins.filter(b=>expStatus(b.expiry)==='warn').length,todayM=movements.filter(m=>m.date&&m.date.startsWith(new Date().toISOString().slice(0,10))).length;
-  document.getElementById('dash-metrics').innerHTML=`<div class="metric"><div class="m-val">${bins.length}</div><div class="m-lbl">Total bins</div></div><div class="metric"><div class="m-val">${totalQty.toLocaleString()}</div><div class="m-lbl">Total units</div></div><div class="metric ${(exp+crit)?'danger':''}"><div class="m-val">${exp+crit}</div><div class="m-lbl">Critical / expired</div></div><div class="metric ${warn?'warning':''}"><div class="m-val">${warn}</div><div class="m-lbl">Expiring &lt;12 mths</div></div><div class="metric"><div class="m-val">${todayM}</div><div class="m-lbl">Movements today</div></div>`;
+  var quarCount=movements.filter(function(m){return m.type==='quarantine';}).length;
+  var quarQty=movements.filter(function(m){return m.type==='quarantine';}).reduce(function(s,m){return s+m.qty;},0);
+  document.getElementById('dash-metrics').innerHTML=`<div class="metric"><div class="m-val">${bins.length}</div><div class="m-lbl">Total bins</div></div><div class="metric"><div class="m-val">${totalQty.toLocaleString()}</div><div class="m-lbl">Total units</div></div><div class="metric ${(exp+crit)?'danger':''}"><div class="m-val">${exp+crit}</div><div class="m-lbl">Critical / expired</div></div><div class="metric ${warn?'warning':''}"><div class="m-val">${warn}</div><div class="m-lbl">Expiring &lt;12 mths</div></div><div class="metric ${quarCount?'warning':''}"><div class="m-val">${quarCount}</div><div class="m-lbl">Quarantine movements</div></div><div class="metric"><div class="m-val">${todayM}</div><div class="m-lbl">Movements today</div></div>`;
   const al=[];
   if(exp)al.push(`<div class="alert alert-danger">⚠ ${exp} bin(s) have EXPIRED items — please action immediately.</div>`);
   if(crit)al.push(`<div class="alert alert-danger">⚠ ${crit} bin(s) expiring within 6 months — check Expiry Tracking tab.</div>`);
   if(warn)al.push(`<div class="alert alert-warn">▲ ${warn} bin(s) expiring within 12 months.</div>`);
   document.getElementById('dash-alerts').innerHTML=al.join('');
+
+  // Quarantine summary
+  var quarMoves=movements.filter(function(m){return m.type==='quarantine';});
+  var quarHtml='';
+  if(quarMoves.length>0){
+    var recentQuar=quarMoves.slice(0,5);
+    quarHtml='<div class="card" style="border-color:#f5e0a0;margin-bottom:16px"><div class="card-title" style="color:var(--warn)">&#9888; Quarantine summary — '+quarMoves.length+' item(s)</div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Bin</th><th>SKU</th><th>Qty</th><th>By</th><th>Notes</th></tr></thead><tbody>';
+    recentQuar.forEach(function(m){
+      quarHtml+='<tr class="tr-warn"><td style="font-size:12px;white-space:nowrap">'+fmtDT(m.date)+'</td><td><strong>'+m.bin+'</strong></td><td>'+m.sku+'</td><td>'+m.qty.toLocaleString()+'</td><td>'+m.by+'</td><td>'+(m.notes||'—')+'</td></tr>';
+    });
+    quarHtml+='</tbody></table></div>';
+    if(quarMoves.length>5) quarHtml+='<div style="font-size:12px;color:var(--text3);margin-top:8px">Showing 5 of '+quarMoves.length+' — see Quarantine tab for full list</div>';
+    quarHtml+='</div>';
+  }
+  document.getElementById('dash-quarantine').innerHTML=quarHtml;
+
   renderDashTable();
 }
 function renderDashTable(){
@@ -522,7 +561,12 @@ function exportCSV(type){
   let rows,filename;
   if(type==='bins'){rows=[['Bin','SKU','Qty','Expiry','Count By','Validated By','Last Update','Expiry Status'],...bins.map(b=>[b.bin,b.sku,b.qty,b.expiry||'',b.countby||'',b.valby||'',b.updated||'',expStatus(b.expiry)])];filename='stockflow-bins.csv';}
   else if(type==='expiry'){const items=bins.filter(b=>['crit','warn','expired'].includes(expStatus(b.expiry))).sort((a,b)=>new Date(a.expiry)-new Date(b.expiry));rows=[['Bin','SKU','Qty','Expiry Date','Days Left','Status','Count By'],...items.map(b=>[b.bin,b.sku,b.qty,b.expiry,daysLeft(b.expiry),expStatus(b.expiry),b.countby||''])];filename='stockflow-expiry.csv';}
-  else{rows=[['Date','SKU','Type','From Bin','To Bin / Qty','Expiry','Reference','Entry By','Validated By','Notes'],...movements.map(m=>[fmtDT(m.date),m.sku,m.type,m.bin,m.type==='transfer'?m.toBin:m.qty,m.expiry||'',m.ref||'',m.by,m.valby||'',m.notes||''])];filename='stockflow-log.csv';}
+  else if(type==='quarantine'){
+    var qm=movements.filter(function(m){return m.type==='quarantine';});
+    rows=[['Date','Bin','SKU','Qty','Expiry','Reference','Entry By','Notes'],...qm.map(function(m){return[fmtDT(m.date),m.bin,m.sku,m.qty,m.expiry||'',m.ref||'',m.by,m.notes||''];})];
+    filename='stockflow-quarantine.csv';
+  }
+  else{rows=[['Date','SKU','Type','From Bin','To Bin / Qty','Expiry','Reference','Entry By','Validated By','Notes']],...movements.map(m=>[fmtDT(m.date),m.sku,m.type,m.bin,m.type==='transfer'?m.toBin:m.qty,m.expiry||'',m.ref||'',m.by,m.valby||'',m.notes||''])];filename='stockflow-log.csv';}
   const csv=rows.map(r=>r.map(c=>'"'+(String(c||'').replace(/"/g,'""'))+'"').join(',')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=filename;a.click();
 }
@@ -560,6 +604,16 @@ async function runImport(){
   }
 }
 
+function renderQuarantine(){
+  var search=(document.getElementById('quar-search')?.value||'').toLowerCase();
+  var quarMoves=movements.filter(function(m){return m.type==='quarantine'&&(!search||m.sku.toLowerCase().includes(search)||m.bin.toLowerCase().includes(search));});
+  var totalQty=quarMoves.reduce(function(s,m){return s+m.qty;},0);
+  var uniqueSKUs=[...new Set(quarMoves.map(function(m){return m.sku;}))].length;
+  document.getElementById('quar-metrics').innerHTML='<div class="metric warning"><div class="m-val">'+quarMoves.length+'</div><div class="m-lbl">Quarantine movements</div></div><div class="metric warning"><div class="m-val">'+uniqueSKUs+'</div><div class="m-lbl">Unique SKUs</div></div><div class="metric warning"><div class="m-val">'+totalQty.toLocaleString()+'</div><div class="m-lbl">Total units quarantined</div></div>';
+  document.getElementById('quar-tbody').innerHTML=quarMoves.length
+    ? quarMoves.map(function(m){return '<tr class="tr-warn"><td style="white-space:nowrap;font-size:12px">'+fmtDT(m.date)+'</td><td><strong>'+m.bin+'</strong></td><td>'+m.sku+'</td><td>'+m.qty.toLocaleString()+'</td><td>'+fmtDate(m.expiry)+'</td><td>'+(m.ref||'—')+'</td><td>'+m.by+'</td><td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(m.notes||'—')+'</td></tr>';}).join('')
+    : '<tr><td colspan="8" class="empty">No quarantine movements yet</td></tr>';
+}
 function updateLastActivity(){
   if(!movements||movements.length===0) return;
   var last=movements[0];
