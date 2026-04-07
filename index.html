@@ -651,7 +651,7 @@ function renderQuarantine(){
   });
   document.getElementById('quar-tbody').innerHTML=rows||'<tr><td colspan="9" class="empty">No quarantine movements yet</td></tr>';
 }
-function updateLastActivity(){function updateLastActivity(){
+function updateLastActivity(){
   if(!movements||movements.length===0) return;
   var last=movements[0];
   if(!last||!last.date) return;
