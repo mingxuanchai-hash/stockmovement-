@@ -604,7 +604,8 @@ async function runImport(){
   }
 }
 
-async function clearQuarantine(id, sku, qty){
+async function clearQuarantine(btn){
+  var id=btn.dataset.id, sku=btn.dataset.sku, qty=parseInt(btn.dataset.qty);
   if(!confirm('Clear '+qty+' x '+sku+' from quarantine? This cannot be undone.')) return;
   try{
     // Delete the quarantine movement record
@@ -624,16 +625,33 @@ async function clearQuarantine(id, sku, qty){
   }
 }
 function renderQuarantine(){
-  var search=(document.getElementById('quar-search')?.value||'').toLowerCase();
+  var search=(document.getElementById('quar-search')?document.getElementById('quar-search').value:'').toLowerCase();
   var quarMoves=movements.filter(function(m){return m.type==='quarantine'&&(!search||m.sku.toLowerCase().includes(search)||m.bin.toLowerCase().includes(search));});
   var totalQty=quarMoves.reduce(function(s,m){return s+m.qty;},0);
-  var skuSet={};quarMoves.forEach(function(m){skuSet[m.sku]=1;});var uniqueSKUs=Object.keys(skuSet).length;
+  var skuSet={};quarMoves.forEach(function(m){skuSet[m.sku]=1;});
+  var uniqueSKUs=Object.keys(skuSet).length;
   document.getElementById('quar-metrics').innerHTML='<div class="metric warning"><div class="m-val">'+quarMoves.length+'</div><div class="m-lbl">Quarantine movements</div></div><div class="metric warning"><div class="m-val">'+uniqueSKUs+'</div><div class="m-lbl">Unique SKUs</div></div><div class="metric warning"><div class="m-val">'+totalQty.toLocaleString()+'</div><div class="m-lbl">Total units quarantined</div></div>';
-  document.getElementById('quar-tbody').innerHTML=quarMoves.length
-    ? quarMoves.map(function(m){return '<tr class="tr-warn"><td style="white-space:nowrap;font-size:12px">'+fmtDT(m.date)+'</td><td><strong>'+m.bin+'</strong></td><td>'+m.sku+'</td><td>'+m.qty.toLocaleString()+'</td><td>'+fmtDate(m.expiry)+'</td><td>'+(m.ref||'—')+'</td><td>'+m.by+'</td><td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(m.notes||'—')+'</td><td><button class="btn btn-danger btn-sm" onclick="clearQuarantine(''+m._id+'',''+m.sku+'','+m.qty+')">Clear</button></td></tr>';}).join('')
-    : '<tr><td colspan="8" class="empty">No quarantine movements yet</td></tr>';
+  var rows='';
+  quarMoves.forEach(function(m){
+    var id=m._id;
+    var sku=m.sku;
+    var qty=m.qty;
+    rows+='<tr class="tr-warn">';
+    rows+='<td style="white-space:nowrap;font-size:12px">'+fmtDT(m.date)+'</td>';
+    rows+='<td><strong>'+m.bin+'</strong></td>';
+    rows+='<td>'+sku+'</td>';
+    rows+='<td>'+qty.toLocaleString()+'</td>';
+    rows+='<td>'+fmtDate(m.expiry)+'</td>';
+    rows+='<td>'+(m.ref||'—')+'</td>';
+    rows+='<td>'+m.by+'</td>';
+    rows+='<td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(m.notes||'—')+'</td>';
+    rows+='<td><button class="btn btn-danger btn-sm" onclick="clearQuarantine(this)">Clear</button></td>';
+    rows+='</tr>';
+    rows=rows.replace('onclick="clearQuarantine(this)"','data-id="'+id+'" data-sku="'+sku+'" data-qty="'+qty+'" onclick="clearQuarantine(this)"');
+  });
+  document.getElementById('quar-tbody').innerHTML=rows||'<tr><td colspan="9" class="empty">No quarantine movements yet</td></tr>';
 }
-function updateLastActivity(){
+function updateLastActivity(){function updateLastActivity(){
   if(!movements||movements.length===0) return;
   var last=movements[0];
   if(!last||!last.date) return;
