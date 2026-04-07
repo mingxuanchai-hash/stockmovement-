@@ -475,17 +475,20 @@ async function recordMovement(){
     } else { await db.collection('bins').doc(binRec._id).update({qty:newQty,updated:new Date().toISOString()}); }
   }else if(type==='in'){
     var emptyBins=bins.filter(function(b){return b.bin===bin&&(!b.sku||b.sku==='');});
-    if(binRec){
-      await db.collection('bins').doc(binRec._id).update({qty:binRec.qty+qty,expiry:expiry||binRec.expiry,updated:new Date().toISOString()});
-      // Delete any empty duplicate records for this bin
+    // Match on bin + sku + expiry (same expiry = update, different expiry = new line)
+    var exactMatch=bins.find(function(b){return b.bin===bin&&b.sku===sku&&(b.expiry===expiry||(expiry===''&&b.expiry==='')||(!expiry));});
+    if(exactMatch){
+      // Same bin, same SKU, same expiry - just add qty
+      await db.collection('bins').doc(exactMatch._id).update({qty:exactMatch.qty+qty,expiry:expiry||exactMatch.expiry,countby:by,updated:new Date().toISOString()});
+      // Clean up any empty records for this bin
       for(var e=0;e<emptyBins.length;e++){await db.collection('bins').doc(emptyBins[e]._id).delete();}
     } else if(emptyBins.length>0){
-      // Update the first empty record
+      // Fill an empty bin slot
       await db.collection('bins').doc(emptyBins[0]._id).update({sku:sku,qty:qty,expiry:expiry||'',countby:by,valby:'',updated:new Date().toISOString()});
-      // Delete any extra empty records
       for(var e=1;e<emptyBins.length;e++){await db.collection('bins').doc(emptyBins[e]._id).delete();}
     } else {
-      await db.collection('bins').add({bin,sku,qty,expiry,countby:by,valby:'',updated:new Date().toISOString()});
+      // Different expiry or new SKU in this bin - create new line
+      await db.collection('bins').add({bin:bin,sku:sku,qty:qty,expiry:expiry||'',countby:by,valby:'',updated:new Date().toISOString()});
     }
   }else if(type==='adj'){
     if(binRec)await db.collection('bins').doc(binRec._id).update({qty,expiry:expiry||binRec.expiry,updated:new Date().toISOString()});
