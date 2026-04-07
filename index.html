@@ -76,6 +76,14 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
 .empty{text-align:center;padding:32px;color:var(--text3);font-size:13px}
 @media(max-width:640px){.cols-3,.cols-4{grid-template-columns:1fr 1fr}.cols-2{grid-template-columns:1fr}.main{padding:16px}.topbar,.nav-bar{padding:0 16px}}
 </style>
+<style>
+.sku-autocomplete-wrap{position:relative;width:100%}
+.sku-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);max-height:200px;overflow-y:auto;z-index:999;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.1)}
+.sku-dropdown div{padding:8px 12px;font-size:13px;cursor:pointer;color:var(--text)}
+.sku-dropdown div:hover{background:var(--surface2)}
+</style>
+<datalist id="sku-datalist"></datalist>
+<datalist id="bin-datalist"></datalist>
 </head>
 <body>
 
@@ -118,6 +126,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
     <button class="nav-btn" onclick="showTab('movement',this)">In / Out form</button>
     <button class="nav-btn" id="nav-expiry" onclick="showTab('expiry',this)">Expiry tracking</button>
     <button class="nav-btn" id="nav-quarantine" onclick="showTab('quarantine',this)">Quarantine</button>
+    <button class="nav-btn" onclick="showTab('stockcount',this)">Stock count</button>
     <button class="nav-btn" onclick="showTab('log',this)">Movement log</button>
     <button class="nav-btn" style="color:#c0392b;font-weight:700;background:#fdecea;border-radius:6px;padding:6px 14px;margin:8px 0 8px 8px" onclick="showTab('import',this)">⬆ Import data</button>
   </div>
@@ -147,7 +156,12 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
           <div class="form-group"><label>Or full bin no.</label><input id="b-full" placeholder="e.g. A-1-1" oninput="parseBin()"></div>
         </div>
         <div class="form-row cols-3">
-          <div class="form-group"><label>Item SKU code</label><input id="b-sku" placeholder="PN-SB-CGB6-1" oninput="skuHint('b-sku','b-hint')"></div>
+          <div class="form-group"><label>Item SKU code</label>
+            <div class="sku-autocomplete-wrap">
+              <input id="b-sku" placeholder="PN-SB-CGB6-1" oninput="skuHint('b-sku','b-hint');showSkuDropdown('b-sku','b-sku-dd')" autocomplete="off">
+              <div id="b-sku-dd" class="sku-dropdown"></div>
+            </div>
+          </div>
           <div class="form-group"><label>Qty</label><input id="b-qty" type="number" min="0" placeholder="0"></div>
           <div class="form-group"><label>Expiry date</label><input id="b-expiry" type="date"></div>
         </div>
@@ -184,13 +198,14 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
             </select>
           </div>
           <div class="form-group"><label>Item SKU code</label>
-            <input id="m-sku" placeholder="Type SKU..." oninput="skuHint('m-sku','m-hint');autoFillBin()">
+            <input id="m-sku" placeholder="Type SKU..." oninput="skuHint('m-sku','m-hint');autoFillBin();showSkuDropdown('m-sku','m-sku-dd')" autocomplete="off" oninput="skuHint('m-sku','m-hint');autoFillBin()"><datalist id="dl-skus-mov"></datalist>
           </div>
         </div>
         <div id="m-hint" class="sku-hint"></div>
+        <div id="m-sku-dd" class="sku-dropdown"></div>
         <div id="standard-row">
           <div class="form-row cols-3">
-            <div class="form-group"><label>Bin no.</label><input id="m-bin" placeholder="e.g. A-1-1" style="text-transform:uppercase"></div>
+            <div class="form-group"><label>Bin no.</label><input id="m-bin" placeholder="Select or type bin..." list="dl-bins-mov"><datalist id="dl-bins-mov"></datalist></div>
             <div class="form-group"><label>Quantity</label><input id="m-qty" type="number" min="1" placeholder="0"></div>
             <div class="form-group"><label>Expiry date (if applicable)</label><input id="m-expiry" type="date"></div>
           </div>
@@ -233,7 +248,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
         <div class="card-title">Movement log</div>
         <div class="filter-row">
           <input id="log-search" placeholder="Search SKU, bin, ref..." oninput="renderLog()">
-          <select id="log-type" onchange="renderLog()"><option value="">All types</option><option value="in">Stock in</option><option value="out">Stock out</option><option value="transfer">Location transfer</option><option value="adj">Adjustment</option><option value="quarantine">Quarantine</option><option value="cleared">Cleared from quarantine</option></select>
+          <select id="log-type" onchange="renderLog()"><option value="">All types</option><option value="in">Stock in</option><option value="out">Stock out</option><option value="transfer">Location transfer</option><option value="adj">Adjustment</option><option value="quarantine">Quarantine</option><option value="cleared">Cleared from quarantine</option><option value="stockcount">Stock count</option></select>
           <button class="btn btn-sm" onclick="exportCSV('log')">Export CSV</button>
         </div>
         <div class="table-wrap"><table><thead><tr><th>Date &amp; time</th><th>SKU</th><th>Type</th><th>From bin</th><th>To / Qty</th><th>Expiry</th><th>Reference</th><th>Entry by</th><th>Validated by</th><th>Notes</th><th></th></tr></thead><tbody id="log-tbody"></tbody></table></div>
@@ -245,12 +260,79 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
       <div class="card" style="border-color:#f5e0a0">
         <div class="card-title" style="color:var(--warn)">&#9888; Items in quarantine</div>
         <div class="filter-row">
-          <input id="quar-search" placeholder="Search SKU or bin..." oninput="renderQuarantine()">
+<input id="quar-search" placeholder="Search SKU or bin..." oninput="renderQuarantine()">
+          <select id="quar-sort-field" onchange="renderQuarantine()" style="max-width:140px">
+            <option value="date">Sort by date</option>
+            <option value="bin">Sort by bin</option>
+            <option value="sku">Sort by SKU</option>
+            <option value="qty">Sort by qty</option>
+            <option value="expiry">Sort by expiry</option>
+          </select>
+          <select id="quar-sort-dir" onchange="renderQuarantine()" style="max-width:130px">
+            <option value="desc">Newest first</option>
+            <option value="asc">Oldest first</option>
+          </select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Date &amp; time</th><th>Bin</th><th>SKU</th><th>Qty</th><th>Expiry</th><th>Reference</th><th>Entry by</th><th>Notes</th><th>Action</th></tr></thead><tbody id="quar-tbody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr>
+          <th onclick="quarSort('date')" style="cursor:pointer">Date &amp; time <span id="qh-date">↓</span></th>
+          <th onclick="quarSort('bin')" style="cursor:pointer">Bin <span id="qh-bin"></span></th>
+          <th onclick="quarSort('sku')" style="cursor:pointer">SKU <span id="qh-sku"></span></th>
+          <th onclick="quarSort('qty')" style="cursor:pointer">Qty <span id="qh-qty"></span></th>
+          <th onclick="quarSort('expiry')" style="cursor:pointer">Expiry <span id="qh-expiry"></span></th>
+          <th>Reference</th><th>Entry by</th><th>Notes</th><th>Action</th>
+        </tr></thead><tbody id="quar-tbody"></tbody></table></div>
       </div>
       <div style="margin-top:4px"><button class="btn btn-sm" onclick="exportCSV('quarantine')">Export quarantine CSV</button></div>
     </div>
+
+    <div id="tab-stockcount" class="tab-section">
+      <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border)">
+        <button id="sc-tab-entry" class="nav-btn active" style="border-bottom:2px solid var(--text);color:var(--text)" onclick="scShowPanel('entry')">Count entry</button>
+        <button id="sc-tab-compare" class="nav-btn" onclick="scShowPanel('compare')">Compare counts</button>
+        <button id="sc-tab-approve" class="nav-btn" onclick="scShowPanel('approve')">Count summary</button>
+      </div>
+
+      <div id="sc-panel-entry">
+        <div class="card">
+          <div class="card-title">Blind count entry</div>
+          <div style="background:var(--info-bg);border:1px solid var(--border-info,#bcd0f7);border-radius:var(--radius);padding:10px 14px;font-size:13px;color:var(--info);margin-bottom:14px">Blind count — system quantities are hidden. Count what you physically see.</div>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px">
+            <div class="form-group" style="flex:0 0 auto"><label>Count date</label><input type="date" id="sc-date" style="width:160px"></div>
+            <div class="form-group" style="flex:0 0 auto"><label>Count round</label><select id="sc-round" style="width:120px"><option value="1st">1st count</option><option value="2nd">2nd count</option><option value="3rd">3rd count</option></select></div>
+            <div class="form-group" style="flex:0 0 auto"><label>Count by</label><input id="sc-countby" placeholder="Your name" style="width:140px"></div>
+            <button class="btn btn-primary" onclick="scAddRow()">+ Add row</button>
+            <button class="btn" onclick="scClearAll()" style="color:var(--danger)">Clear all</button>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>Bin no.</th><th>SKU code</th><th>Qty counted</th><th>Expiry date</th><th>Condition</th><th></th></tr></thead><tbody id="sc-tbody"></tbody></table></div>
+          <div class="actions" style="margin-top:14px;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <button class="btn" onclick="exportCSV('stockcount')">Export as CSV</button>
+            <button class="btn btn-primary" onclick="scSaveOnly()">Save count</button>
+          </div>
+          <div id="sc-result" style="display:none;margin-top:12px;padding:12px 16px;border-radius:var(--radius);font-size:13px"></div>
+        </div>
+      </div>
+
+      <div id="sc-panel-compare" style="display:none">
+        <div class="card">
+          <div class="card-title">Compare counts</div>
+          <div class="filter-row">
+            <select id="sc-compare-date" onchange="renderScCompare()" style="max-width:220px"><option value="">Select count date...</option></select>
+            <button class="btn btn-sm" onclick="scLoad2ndCount()">Load discrepancies into 2nd count</button>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>Bin</th><th>SKU</th><th>1st count</th><th>2nd count</th><th>3rd count</th><th>Variance</th><th>Expiry</th><th>Condition</th></tr></thead><tbody id="sc-compare-tbody"></tbody></table></div>
+        </div>
+      </div>
+
+      <div id="sc-panel-approve" style="display:none">
+        <div class="card">
+          <div class="card-title">Count summary</div>
+          <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Stock is updated automatically when each count round is saved. The latest round always takes priority per SKU.</p>
+          <div id="sc-approve-preview" style="font-size:13px;color:var(--text2)"></div>
+        </div>
+      </div>
+    </div>
+    <datalist id="dl-bins"></datalist>
+    <datalist id="dl-skus"></datalist>
 
     <div id="tab-import" class="tab-section">
       <div class="card" style="max-width:500px;margin:0 auto">
@@ -314,6 +396,9 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let bins=[], movements=[], currentUser='';
+const SKU_LIST=["PN-SB-CGB6-1", "PN-SB-CGCY6-1", "PN-SB-CGSS6-1", "PN-SB-CGBZ6-1", "PN-SB-ALD-1", "PN-SB-GTS-1", "PN-SB-PHV-1", "PN-SB-SAJ-1", "PN-SB-SOSE-1", "PN-SB-STG-1", "PN-SB-BCCE-1", "PN-SB-CRMS-1", "PN-SB-CGBM-1", "PN-SB-MAP-1", "PN-SB-LTME-1", "PN-SB-SKO-1", "PN-SB-SOSEZ-1", "PN-SB-CGB-1", "PN-SB-CGSS-1", "PN-SB-CGCY-1", "PN-SB-CGBZ-1", "PN-SB-CGS-1", "PN-ES-DPM-1", "PN-ES-FCPM-1", "PN-ES-SGPM-1", "PN-ES-LBPM-1", "PN-ES-CHPM-1", "PN-ES-SSPM-1", "PN-ES-IPM-1", "PN-ES-JPM-1", "PN-ES-LUPM-1", "PN-ES-MCP-1", "PN-ES-HH-1", "PN-ES-HHS-1", "PN-ES-GKSB-1", "PN-ES-LKSB-1", "PN-ES-DLB-1", "PN-ES-MCPM-1", "PN-ES-HOHA-1", "PN-ES-GKSBH-1", "PN-ES-MCPH-1", "PN-BN-AG-1", "PN-BN-CLS-1", "PN-BN-COL-1", "PN-BN-NS-1", "PN-BN-WP-1", "PN-BN-CAVE-1", "PN-BN-COCO-1", "PN-BN-AG-SHOT", "PN-BN-AG-MINI", "PN-BN-CLS-SHOT", "PN-BN-CLS-MINI", "PN-BN-ROSE-1", "PN-BN-ROSE-SHOT", "PN-BN-ROSE-MINI", "PN-BN-WP-SHOT", "PN-BN-DG-SHOT", "PN-BN-SPCLS-1", "PN-BN-SPWP-1", "PN-SH-AG-1", "PN-ES-OMB-1", "PN-ES-PCL-12", "PN-ES-PEH-1", "PN-ES-CWPIC-1", "PN-ES-DBD-1", "ST-SACH-CGBM-1", "ST-SACH-LTME-1", "ST-SACH-SKO-1", "ST-NUTRI-LTME-1", "ST-NUTRI-SKO-1", "CARD-ALD-1", "CARD-GTS-1", "CARD-PHV-1", "CARD-SAJ-1", "CARD-STG-1", "CARD-BCCE-1", "CARD-CGCY6-1", "CARD-CGSS6-1", "CARD-CRMS-1", "CARD-CGBZ6-1", "CARD-CGBM-1", "CARD-LTME-1", "CARD-SKO-1", "CARD-SOSEZ-1", "CARD-APOLOGY", "CARD-PEH", "CARD-CWPIC-1", "CARD-MAP-1", "CARD-CGCY-1", "CARD-CGSS-1", "CARD-CGBZ-1", "CARD-SOSE-1", "CARD-CGB-1", "ST-NUTRI-MAP-1", "ST-NUTRI-CRMS-1", "ST-SACH-MAP-1", "ST-SACH-CRMS-1", "CARD-BN-1", "PKG-BN-CTN-4", "PKG-SB-CTN-15", "PKG-SB-CTN-30", "PKG-SB-CGB-30", "PKG-SB-SOSE-30", "PKG-SB-BROWN-1", "PKG-SB-BROWN-2", "PKG-SB-BROWN-3", "PKG-SB-BROWN-4", "PKG-BN-BROWN-1", "PKG-SB-BROWN-3TUB", "PKG-RT-CGB-15", "PKG-RT-SOSE-15", "PKG-RT-STG-15", "PKG-RT-BCCE-15", "PKG-RT-CGS-15", "PKG-RT-CGSS-15", "PKG-RT-GTS-15", "PKG-RT-PHV-15", "PKG-EPE-THICK-1", "PKG-EPE-THICK-SHOT", "PKG-EPE-THICK-MINI", "PKG-EPE-THIN-1", "PKG-SB-POLY-1", "PKG-SB-POLYFOAM-1", "PKG-SB-BROWN-1TUB", "PKG-RT-CGBZ-15", "PKG-RT-CGB6-15", "PKG-CHRISTMASBOX-1", "PKG-RTMY-BCCE-15", "PKG-RTMY-SOSE-15", "PKG-RT-CGSS6-15", "PKG-RT-CGBZ6-15", "PKG-RTMY-CGB6-15", "PKG-RTMY-CGBZ6-15", "PN-ME-DB-1", "PN-ME-PSB-1", "PN-ME-PB-1", "PN-ME-PBB-1", "PN-ME-PBP-1"];
+const ALL_BINS=["A-1-1","A-1-2","A-2-1","A-2-2","A-3-1","A-3-2","A-4-1","A-4-2","A-5-1","A-5-2","A-6-1","A-6-2","A-7-1","A-7-2","A-8-1","A-9-1","A-9-2","A-OTHER","B-1-1","B-1-2","B-2-1","B-2-2","B-3-1","B-3-2","B-4-1","B-4-2","B-5-1","B-5-2","B-6-1","B-6-2","B-7-1","B-7-2","B-8-1","B-8-2","B-9-1","B-9-2","C-1-1","C-1-2","C-2-1","C-2-2","C-3-1","C-3-2","C-4-1","C-4-2","C-5-1","C-5-2","C-6-1","C-6-2","C-7-1","C-7-2","C-8-1","C-8-2","C-9-1","C-9-2","D-1-2","D-2-1","D-2-2","D-3-1","D-3-2","D-4-1","D-7-1","D-7-2","D-8-1","D-8-2","D-9-1","D-9-2","E-1-1","E-1-2","E-2-2","E-3-2","E-4-1","E-4-2","E-5-1","E-5-2","E-6-1","E-6-2","E-7-1","E-7-2","E-8-1","E-8-2","E-9-1","E-9-2","F-1-1","F-1-2","F-10-1","F-10-2","F-11-1","F-11-2","F-12-1","F-12-2","F-2-1","F-2-2","F-3-1","F-3-2","F-4-1","F-4-2","F-5-1","F-5-2","F-6-1","F-6-2","F-7-1","F-7-2","F-8-1","F-8-2","F-9-1","F-9-2","G-1-1","G-1-2","G-10-1","G-10-2","G-11-1","G-11-2","G-12-1","G-12-2","G-2-2","G-3-1","G-3-2","G-4-1","G-4-2","G-5-1","G-5-2","G-6-1","G-6-2","G-7-1","G-7-2","G-8-1","G-8-2","G-9-1","G-9-2","G-OTHER","H-1-1","H-1-2","H-10-1","H-10-2","H-11-1","H-11-2","H-12-1","H-12-2","H-2-1","H-2-2","H-3-1","H-3-2","H-4-1","H-4-2","H-5-1","H-5-2","H-6-1","H-6-2","H-7-1","H-7-2","H-8-1","H-8-2","H-9-1","H-9-2","H-OTHER","I-1-1","I-1-2","I-10-1","I-10-2","I-11-1","I-11-2","I-12-1","I-2-1","I-3-1","I-5-1","I-5-2","I-6-1","I-7-1","I-8-1","I-8-2","I-9-1","I-9-2","I-OTHER","J-1-1","J-1-2","J-10-1","J-10-2","J-11-1","J-11-2","J-12-1","J-12-2","J-2-1","J-2-2","J-3-1","J-3-2","J-4-1","J-4-2","J-5-1","J-6-1","J-7-1","J-7-2","J-8-1","J-8-2","J-9-2","J-OTHER","K-1-1","K-1-2","K-10-1","K-10-2","K-11-1","K-11-2","K-12-1","K-2-1","K-2-2","K-3-1","K-3-2","K-4-1","K-4-2","K-5-1","K-6-1","K-6-2","K-7-2","K-8-1","K-9-1","K-OTHER","L-1-1","L-1-2","L-11-1","L-11-1A","L-11-1B","L-11-1C","L-11-1D","L-11-1E","L-13-1","L-13-1A","L-14-1","L-14-1A","L-14-1B","L-14-1C","L-14-1D","L-2-1","L-2-2","L-3-1","L-3-2","L-4-1","L-4-2","L-5-1","L-5-2","L-6-1","L-6-2","L-7-1A","L-7-2","L-8-1","L-8-2","L-9-1","L-9-1A","L-9-1B","L-9-2","L-OTHER1","L-OTHER10","L-OTHER11","L-OTHER12","L-OTHER13","L-OTHER14","L-OTHER15","L-OTHER16","L-OTHER17","L-OTHER18","L-OTHER19","L-OTHER20","L-OTHER21","L-OTHER22","L-OTHER23","L-OTHER24","L-OTHER25","M-1-1","M-1-2","M-2-1","M-2-2","M-3-1","M-3-2","M-4-1","M-4-2","M-5-1","M-5-2","M-6-1","M-6-2","M-7-1","M-7-2","M-8-2","W-10","W-11","W-12","W-13","W-14","W-15","W-16","W-17","W-18","W-19","W-2","W-20","W-21","W-22","W-23","W-24","W-25","W-26","W-27","W-28","W-29","W-3","W-30","W-31","W-32","W-33","W-34","W-35","W-36","W-37","W-38","W-39","W-4","W-40","W-41","W-42","W-43","W-44","W-45","W-46","W-47","W-48","W-49","W-5","W-50","W-51","X-1","X-10","X-11","X-12","X-13","X-14","X-15","X-16","X-17","X-18","X-19","X-2","X-20","X-21","X-22","X-23","X-24","X-25","X-26","X-27","X-28","X-29","X-3","X-30","X-31","X-32","X-4","X-5","X-6","X-7","X-8","X-83","X-84","Y-10","Y-11","Y-12","Y-13","Y-14","Y-15","Y-16","Y-17","Y-18","Y-19","Y-2","Y-20","Y-21","Y-22","Y-23","Y-24","Y-25","Y-26","Y-27","Y-28","Y-29","Y-3","Y-30","Y-31","Y-32","Y-33","Y-Other"];
+const ALL_SKUS=["CARD-ALD-1","CARD-BCCE-1","CARD-BN-1","CARD-CGB-1","CARD-CGBM-1","CARD-CGBZ6-1","CARD-CGCY6-1","CARD-CGSS-1","CARD-CGSS6-1","CARD-CRMS-1","CARD-CWPIC-1","CARD-GTS-1","CARD-LTME-1","CARD-MAP-1","CARD-PHV-1","CARD-SAJ-1","CARD-SKO-1","CARD-SOSE-1","CARD-SOSEZ-1","CARD-STG-1","CARD-STGDAY","Heart Pocket Mirror","Holographic Sticker Sheet (A6)","PKG-BN-CTN-4","PKG-EPE-THICK-1","PKG-EPE-THICK-MINI","PKG-EPE-THICK-SHOT","PKG-EPE-THIN-1","PKG-RT-BCCE-15","PKG-RT-CGB-15","PKG-RT-CGB6-15","PKG-RT-CGBZ-15","PKG-RT-CGBZ6-15","PKG-RT-CGSS-15","PKG-RT-CGSS6-15","PKG-RT-GTS-15","PKG-RT-PHV-15","PKG-RT-SOSE-15","PKG-RTMY-CGB6-15","PKG-RTMY-CGBZ6-15","PKG-SB-BROWN-1","PKG-SB-BROWN-1TUB","PKG-SB-BROWN-2","PKG-SB-BROWN-3","PKG-SB-BROWN-3TUB","PKG-SB-BROWN-4","PKG-SB-CGB-30","PKG-SB-CGB6-30","PKG-SB-CTN-15","PKG-SB-CTN-30","PKG-SB-POLY-1","PKG-SB-SOSE-30","PN-BN-AG-1","PN-BN-ALMD-1","PN-BN-CAVE-1","PN-BN-CLS-1","PN-BN-COL-1","PN-BN-NS-1","PN-BN-WP-1","PN-ES-CHPM-1","PN-ES-CWPIC-1","PN-ES-DBD-1","PN-ES-DLB-1","PN-ES-DPM-1","PN-ES-FCPM-1","PN-ES-GKSB-1","PN-ES-HH-1","PN-ES-HHS-1","PN-ES-HOHA-1","PN-ES-IPM-1","PN-ES-JPM-1","PN-ES-LBPM-1","PN-ES-LKSB-1","PN-ES-MCP-1","PN-ES-MCPM-1","PN-ES-OMB-1","PN-ES-PCL-12","PN-ES-PEH-1","PN-ES-SBT-1","PN-ES-SGPM-1","PN-ES-SSPM-1","PN-ME-DB-1","PN-ME-GSCAP-1","PN-ME-PB-1","PN-ME-PBB-1","PN-ME-PBP-1","PN-ME-PSB-1","PN-ME-WRISTBAG-1","PN-SB-ALD-1","PN-SB-BCCE-1","PN-SB-CGB6-1","PN-SB-CGBM-1","PN-SB-CGBZ6-1","PN-SB-CGCY6-1","PN-SB-CGSS6-1","PN-SB-CRMS-1","PN-SB-GTS-1","PN-SB-LTME-1","PN-SB-MAP-1","PN-SB-PHV-1","PN-SB-SAJ-1","PN-SB-SKO-1","PN-SB-SOSE-1","PN-SB-SOSEZ-1","PN-SB-STG-1","ST-NUTRI-LTME-1","ST-NUTRI-SKO-1","ST-SACH-CGBM-1","ST-SACH-LTME-1"];
 const TODAY=new Date(); TODAY.setHours(0,0,0,0);
 
 function daysLeft(d){if(!d)return null;const x=new Date(d);x.setHours(0,0,0,0);return Math.round((x-TODAY)/86400000);}
@@ -391,6 +476,10 @@ function initFirestore(){
       else if(id==='tab-expiry')renderExpiry();
     }
     updateExpiryNav();
+    var dlBm=document.getElementById('dl-bins-mov');
+    var dlSm=document.getElementById('dl-skus-mov');
+    if(dlBm){dlBm.innerHTML='';[...new Set(bins.map(function(b){return b.bin;}).filter(Boolean))].sort().forEach(function(b){var o=document.createElement('option');o.value=b;dlBm.appendChild(o);});}
+    if(dlSm){dlSm.innerHTML='';[...new Set(bins.map(function(b){return b.sku;}).filter(Boolean))].sort().forEach(function(s){var o=document.createElement('option');o.value=s;dlSm.appendChild(o);});}
   },err=>{setSyncStatus('error','offline');console.error(err);});
   db.collection('movements').orderBy('date','desc').limit(500).onSnapshot(snap=>{
     movements=snap.docs.map(d=>({...d.data(),_id:d.id}));
@@ -411,6 +500,7 @@ function showTab(t,btn){
   if(t==='expiry')renderExpiry();
   if(t==='log')renderLog();
   if(t==='quarantine')renderQuarantine();
+  if(t==='stockcount'){initStockCount();renderScHistory();}
 }
 function updateQuarantineNav(){
   var c=movements.filter(function(m){return m.type==='quarantine';}).length;
@@ -424,6 +514,30 @@ function updateExpiryNav(){
   btn.classList.toggle('urgent',c>0);
 }
 
+function showSkuDropdown(inputId, dropdownId){
+  var val=document.getElementById(inputId).value.trim().toUpperCase();
+  var dd=document.getElementById(dropdownId);
+  if(!val||val.length<1){dd.style.display='none';return;}
+  var matches=SKU_LIST.filter(function(s){return s.toUpperCase().includes(val);}).slice(0,10);
+  if(matches.length===0){dd.style.display='none';return;}
+  dd.innerHTML='';
+  matches.forEach(function(s){var div=document.createElement('div');div.textContent=s;(function(sku){div.onclick=function(){selectSku(inputId,dropdownId,sku);};})(s);dd.appendChild(div);});
+  //
+  dd.style.display='block';
+}
+function selectSku(inputId, dropdownId, sku){
+  document.getElementById(inputId).value=sku;
+  document.getElementById(dropdownId).style.display='none';
+  if(inputId==='m-sku'){skuHint('m-sku','m-hint');autoFillBin();}
+  if(inputId==='b-sku'){skuHint('b-sku','b-hint');}
+}
+// Close dropdowns when clicking outside
+document.addEventListener('click',function(e){
+  ['m-sku-dd','b-sku-dd'].forEach(function(id){
+    var dd=document.getElementById(id);
+    if(dd&&!dd.contains(e.target)){dd.style.display='none';}
+  });
+});
 function skuHint(inputId,hintId){
   const val=document.getElementById(inputId).value.trim().toUpperCase();
   const el=document.getElementById(hintId);
@@ -607,6 +721,13 @@ function exportCSV(type){
   let rows,filename;
   if(type==='bins'){rows=[['Bin','SKU','Qty','Expiry','Count By','Validated By','Last Update','Expiry Status'],bins.map(function(b){return[b.bin,b.sku,b.qty,b.expiry||'',b.countby||'',b.valby||'',b.updated||'',expStatus(b.expiry)];})];filename='stockflow-bins.csv';}
   else if(type==='expiry'){const items=bins.filter(b=>['crit','warn','expired'].includes(expStatus(b.expiry))).sort((a,b)=>new Date(a.expiry)-new Date(b.expiry));rows=[['Bin','SKU','Qty','Expiry Date','Days Left','Status','Count By'],items.map(function(b){return[b.bin,b.sku,b.qty,b.expiry,daysLeft(b.expiry),expStatus(b.expiry),b.countby||''];})];filename='stockflow-expiry.csv';}
+  else if(type==='stockcount'){
+    var date=document.getElementById('sc-date')?document.getElementById('sc-date').value:'';
+    var countby=document.getElementById('sc-countby')?document.getElementById('sc-countby').value:'';
+    var valid=scRows.filter(function(r){return r.bin&&r.sku;});
+    rows=[['Count Date','Count By','Bin','SKU','Qty Counted','Expiry','Condition']].concat(valid.map(function(r){return[date,countby,r.bin,r.sku,r.qty,r.expiry,r.condition];}));
+    filename='stockflow-count-'+date+'.csv';
+  }
   else if(type==='quarantine'){
     var qm=movements.filter(function(m){return m.type==='quarantine';});
     rows=[['Date','Bin','SKU','Qty','Expiry','Reference','Entry By','Notes']].concat(qm.map(function(m){return[fmtDT(m.date),m.bin,m.sku,m.qty,m.expiry||'',m.ref||'',m.by,m.notes||''];}));
@@ -650,6 +771,212 @@ async function runImport(){
   }
 }
 
+// ── STOCK COUNT ──
+var scRows=[];
+function scShowPanel(p){
+  ['entry','compare','approve'].forEach(function(n){
+    document.getElementById('sc-panel-'+n).style.display=n===p?'':'none';
+    var btn=document.getElementById('sc-tab-'+n);
+    if(btn){btn.style.borderBottom=n===p?'2px solid var(--text)':'2px solid transparent';btn.style.color=n===p?'var(--text)':'var(--text2)';}
+  });
+  if(p==='compare') renderScCompare();
+  if(p==='approve') renderApprovePanel();
+}
+function populateDataLists(){
+  var dlBins=document.getElementById('dl-bins');
+  var dlSkus=document.getElementById('dl-skus');
+  if(dlBins&&!dlBins.hasChildNodes()){
+    // Add bins from live data first, then fallback to hardcoded
+    var liveBins=[...new Set(bins.map(function(b){return b.bin;}).filter(Boolean))].sort();
+    var allBins=liveBins.length>0?liveBins:ALL_BINS;
+    allBins.forEach(function(b){var o=document.createElement('option');o.value=b;dlBins.appendChild(o);});
+  }
+  if(dlSkus&&!dlSkus.hasChildNodes()){
+    var liveSkus=[...new Set(bins.map(function(b){return b.sku;}).filter(Boolean))].sort();
+    var allSkus=liveSkus.length>0?liveSkus:ALL_SKUS;
+    allSkus.forEach(function(s){var o=document.createElement('option');o.value=s;dlSkus.appendChild(o);});
+  }
+}
+function initStockCount(){
+  // Populate SKU datalist
+  var dl=document.getElementById('sku-datalist');
+  if(dl) dl.innerHTML=SKU_LIST.map(function(s){return'<option value="'+s+'">';}).join('');
+  // Populate bin datalist from current bins
+  var bdl=document.getElementById('bin-datalist');
+  if(bdl){
+    var uniqueBins=[...new Set(bins.map(function(b){return b.bin;}))].sort();
+    bdl.innerHTML=uniqueBins.map(function(b){return'<option value="'+b+'">';}).join('');
+  }
+  populateDataLists();
+  var d=document.getElementById('sc-date');
+  if(d&&!d.value) d.value=new Date().toISOString().slice(0,10);
+  var cb=document.getElementById('sc-countby');
+  if(cb&&!cb.value) cb.value=currentUser||'';
+  if(scRows.length===0) scAddRow();
+  renderScTable();
+}
+function scAddRow(){
+  scRows.push({bin:'',sku:'',qty:'',expiry:'',condition:'OK'});
+  renderScTable();
+  setTimeout(function(){var inputs=document.querySelectorAll('.sc-bin-input');if(inputs.length)inputs[inputs.length-1].focus();},50);
+}
+function scDeleteRow(i){scRows.splice(i,1);renderScTable();}
+function scUpdateRow(i,field,val){if(scRows[i])scRows[i][field]=val;}
+function scClearAll(){if(!confirm('Clear all rows?'))return;scRows=[];scAddRow();}
+function renderScTable(){
+  var tbody=document.getElementById('sc-tbody');
+  if(!tbody) return;
+  tbody.innerHTML='';
+  for(var i=0;i<scRows.length;i++){
+    var r=scRows[i];
+    var tr=document.createElement('tr');
+    var td1=document.createElement('td');
+    var inp1=document.createElement('input');
+    inp1.className='sc-bin-input';inp1.value=r.bin||'';inp1.placeholder='Select bin...';
+    inp1.setAttribute('list','bin-datalist');
+    (function(idx){inp1.oninput=function(){scUpdateRow(idx,'bin',this.value.toUpperCase());};})(i);
+    td1.appendChild(inp1);tr.appendChild(td1);
+    var td2=document.createElement('td');
+    var inp2=document.createElement('input');
+    inp2.value=r.sku||'';inp2.placeholder='Select SKU...';
+    inp2.setAttribute('list','sku-datalist');
+    (function(idx){inp2.oninput=function(){scUpdateRow(idx,'sku',this.value.toUpperCase());};})(i);
+    td2.appendChild(inp2);tr.appendChild(td2);
+    var td3=document.createElement('td');
+    var inp3=document.createElement('input');
+    inp3.type='number';inp3.value=r.qty||'';inp3.placeholder='0';inp3.min='0';
+    (function(idx){inp3.oninput=function(){scUpdateRow(idx,'qty',this.value);};})(i);
+    td3.appendChild(inp3);tr.appendChild(td3);
+    var td4=document.createElement('td');
+    var inp4=document.createElement('input');
+    inp4.type='date';inp4.value=r.expiry||'';
+    (function(idx){inp4.oninput=function(){scUpdateRow(idx,'expiry',this.value);};})(i);
+    td4.appendChild(inp4);tr.appendChild(td4);
+    var td5=document.createElement('td');
+    var sel=document.createElement('select');
+    ['OK','Damaged','Expired'].forEach(function(opt){var o=document.createElement('option');o.value=opt;o.textContent=opt;if(r.condition===opt)o.selected=true;sel.appendChild(o);});
+    (function(idx){sel.onchange=function(){scUpdateRow(idx,'condition',this.value);};})(i);
+    td5.appendChild(sel);tr.appendChild(td5);
+    var td6=document.createElement('td');
+    var btn=document.createElement('button');
+    btn.className='btn btn-danger btn-sm';btn.textContent='X';
+    (function(idx){btn.onclick=function(){scDeleteRow(idx);};})(i);
+    td6.appendChild(btn);tr.appendChild(td6);
+    tbody.appendChild(tr);
+  }
+}
+async function scSaveOnly(){
+  var date=document.getElementById('sc-date').value;
+  var round=document.getElementById('sc-round').value;
+  var countby=document.getElementById('sc-countby').value.trim()||currentUser;
+  var valid=scRows.filter(function(r){return r.bin&&r.sku&&r.qty!=='';});
+  if(valid.length===0){alert('Please add at least one row with bin, SKU and qty.');return;}
+  if(!confirm('Save '+valid.length+' entries as '+round+' count and update stock immediately?')) return;
+  var result=document.getElementById('sc-result');
+  result.style.display='block';result.style.background='var(--warn-bg)';result.style.color='var(--warn)';
+  result.textContent='Saving and updating stock...';
+  var roundOrder={'1st':1,'2nd':2,'3rd':3};
+  try{
+    var movBatch=db.batch();
+    var binBatch=db.batch();
+    var updated=0,created=0;
+    for(var i=0;i<valid.length;i++){
+      var r=valid[i];
+      var qty=parseInt(r.qty)||0;
+      // Save count record
+      movBatch.set(db.collection('movements').doc(),{
+        bin:r.bin,toBin:r.bin,sku:r.sku,type:'stockcount',qty:qty,
+        expiry:r.expiry||'',ref:'Stock count '+date+' '+round,by:countby,valby:'',
+        notes:'Round:'+round+'|Condition:'+r.condition,date:new Date().toISOString(),
+        countDate:date,countRound:round,roundOrder:roundOrder[round]||1
+      });
+      // Check if there is already a higher round count for this SKU on same date
+      var higherRound=movements.find(function(m){
+        return m.type==='stockcount'&&m.countDate===date&&m.bin===r.bin&&m.sku===r.sku&&(m.roundOrder||1)>(roundOrder[round]||1);
+      });
+      if(higherRound) continue; // Don't update bin if a later round already exists
+      // Update bin stock with this count
+      var existing=bins.find(function(b){return b.bin===r.bin&&b.sku===r.sku;});
+      var binData={bin:r.bin,sku:r.sku,qty:qty,expiry:r.expiry||'',countby:countby,valby:'Count '+round,updated:new Date().toISOString()};
+      if(existing){binBatch.update(db.collection('bins').doc(existing._id),binData);updated++;}
+      else{binBatch.set(db.collection('bins').doc(),binData);created++;}
+    }
+    await movBatch.commit();
+    await binBatch.commit();
+    result.style.background='var(--success-bg)';result.style.color='var(--success)';
+    result.textContent='Saved '+valid.length+' count entries ('+round+'). Updated '+updated+' bins, created '+created+' new. Dashboard & Stock by bin now reflect this count!';
+  }catch(e){
+    result.style.background='var(--danger-bg)';result.style.color='var(--danger)';
+    result.textContent='Error: '+e.message;console.error(e);
+  }
+}
+function getScDates(){
+  var dates={};
+  movements.filter(function(m){return m.type==='stockcount'&&m.countDate;}).forEach(function(m){dates[m.countDate]=1;});
+  return Object.keys(dates).sort().reverse();
+}
+function renderScCompare(){
+  var sel=document.getElementById('sc-compare-date');
+  var dates=getScDates();
+  var cur=sel.value;
+  sel.innerHTML='<option value="">Select count date...</option>'+dates.map(function(d){return'<option value="'+d+'"'+(d===cur?' selected':'')+'>'+d+'</option>';}).join('');
+  if(!cur||!dates.includes(cur)){document.getElementById('sc-compare-tbody').innerHTML='<tr><td colspan="8" class="empty">Select a count date above</td></tr>';return;}
+  var countMovs=movements.filter(function(m){return m.type==='stockcount'&&m.countDate===cur;});
+  var byKey={};
+  countMovs.forEach(function(m){
+    var key=m.bin+'|'+m.sku;
+    var round=m.countRound||'1st';
+    if(!byKey[key]) byKey[key]={bin:m.bin,sku:m.sku,expiry:m.expiry,condition:m.notes};
+    byKey[key][round]=m.qty;
+  });
+  var rows=Object.values(byKey);
+  document.getElementById('sc-compare-tbody').innerHTML=rows.length?rows.map(function(r){
+    var v1=r['1st']!==undefined?r['1st']:'—';
+    var v2=r['2nd']!==undefined?r['2nd']:'—';
+    var v3=r['3rd']!==undefined?r['3rd']:'—';
+    var diff='';var diffStyle='';
+    if(r['1st']!==undefined&&r['2nd']!==undefined){
+      var d=r['2nd']-r['1st'];
+      diff=(d>0?'+':'')+d;
+      diffStyle=d!==0?'color:var(--danger);font-weight:600':'color:var(--success)';
+    }
+    return'<tr><td><strong>'+r.bin+'</strong></td><td>'+r.sku+'</td><td>'+v1+'</td><td>'+v2+'</td><td>'+v3+'</td><td style="'+diffStyle+'">'+(diff||'—')+'</td><td>'+fmtDate(r.expiry)+'</td><td>'+(r.condition||'—')+'</td></tr>';
+  }).join(''):'<tr><td colspan="8" class="empty">No count data for this date</td></tr>';
+}
+function scLoad2ndCount(){
+  var date=document.getElementById('sc-compare-date').value;
+  if(!date){alert('Select a count date first.');return;}
+  // Find the highest round per SKU and get items that need recounting
+  var allCount=movements.filter(function(m){return m.type==='stockcount'&&m.countDate===date;});
+  var byKey={};
+  allCount.forEach(function(m){
+    var key=m.bin+'|'+m.sku;
+    if(!byKey[key]||((m.roundOrder||1)>(byKey[key].roundOrder||1))) byKey[key]=m;
+  });
+  // Ask which round to load into next
+  var currentRounds=allCount.map(function(m){return m.countRound;});
+  var nextRound='2nd';
+  if(currentRounds.includes('2nd')) nextRound='3rd';
+  var toLoad=Object.values(byKey);
+  if(toLoad.length===0){alert('No count data found for this date.');return;}
+  scRows=toLoad.map(function(m){return{bin:m.bin,sku:m.sku,qty:'',expiry:m.expiry||'',condition:'OK'};});
+  document.getElementById('sc-date').value=date;
+  document.getElementById('sc-round').value=nextRound;
+  scShowPanel('entry');
+  renderScTable();
+  alert('Loaded '+scRows.length+' items for '+nextRound+' count. Quantities are blank — count blind and save.');
+}
+function renderApprovePanel(){
+  var prev=document.getElementById('sc-approve-preview');
+  var dates=getScDates();
+  if(dates.length===0){prev.textContent='No stock count records yet.';return;}
+  var summary='Count dates available: '+dates.join(', ')+'<br><br>';
+  summary+='Stock is updated automatically — latest round per SKU always wins.';
+  prev.innerHTML=summary;
+}
+function renderApprovePreview(){}
+function renderScHistory(){}
+
 async function clearQuarantine(btn){
   var id=btn.dataset.id||'';
   var sku=btn.dataset.sku||'';
@@ -671,18 +998,41 @@ async function clearQuarantine(btn){
     console.error(e);
   }
 }
+function quarSort(field){
+  var sf=document.getElementById('quar-sort-field');
+  var sd=document.getElementById('quar-sort-dir');
+  if(sf&&sf.value===field){sd.value=sd.value==='asc'?'desc':'asc';}
+  else{if(sf)sf.value=field;if(sd)sd.value=field==='date'?'desc':'asc';}
+  renderQuarantine();
+}
 function renderQuarantine(){
   var search=(document.getElementById('quar-search')?document.getElementById('quar-search').value:'').toLowerCase();
-  var quarMoves=movements.filter(function(m){return m.type==='quarantine'&&(!search||m.sku.toLowerCase().includes(search)||m.bin.toLowerCase().includes(search));});
+  var sortField=document.getElementById('quar-sort-field')?document.getElementById('quar-sort-field').value:'date';
+  var sortDir=document.getElementById('quar-sort-dir')?document.getElementById('quar-sort-dir').value:'desc';
+  ['date','bin','sku','qty','expiry'].forEach(function(f){
+    var el=document.getElementById('qh-'+f);
+    if(el) el.textContent=sortField===f?(sortDir==='asc'?' ↑':' ↓'):'';
+  });
+  var quarMoves=movements.filter(function(m){
+    return m.type==='quarantine'&&(!search||m.sku.toLowerCase().includes(search)||m.bin.toLowerCase().includes(search));
+  });
+  quarMoves.sort(function(a,b){
+    var av,bv;
+    if(sortField==='bin'){av=a.bin||'';bv=b.bin||'';}
+    else if(sortField==='sku'){av=a.sku||'';bv=b.sku||'';}
+    else if(sortField==='qty'){av=a.qty||0;bv=b.qty||0;}
+    else if(sortField==='expiry'){av=a.expiry||'9999';bv=b.expiry||'9999';}
+    else{av=a.date||'';bv=b.date||'';}
+    if(sortDir==='asc') return av>bv?1:av<bv?-1:0;
+    return av<bv?1:av>bv?-1:0;
+  });
   var totalQty=quarMoves.reduce(function(s,m){return s+m.qty;},0);
   var skuSet={};quarMoves.forEach(function(m){skuSet[m.sku]=1;});
   var uniqueSKUs=Object.keys(skuSet).length;
   document.getElementById('quar-metrics').innerHTML='<div class="metric warning"><div class="m-val">'+quarMoves.length+'</div><div class="m-lbl">Quarantine movements</div></div><div class="metric warning"><div class="m-val">'+uniqueSKUs+'</div><div class="m-lbl">Unique SKUs</div></div><div class="metric warning"><div class="m-val">'+totalQty.toLocaleString()+'</div><div class="m-lbl">Total units quarantined</div></div>';
   var rows='';
   quarMoves.forEach(function(m){
-    var id=m._id;
-    var sku=m.sku;
-    var qty=m.qty;
+    var id=m._id, sku=m.sku, qty=m.qty;
     rows+='<tr class="tr-warn">';
     rows+='<td style="white-space:nowrap;font-size:12px">'+fmtDT(m.date)+'</td>';
     rows+='<td><strong>'+m.bin+'</strong></td>';
