@@ -497,7 +497,7 @@ async function recordMovement(){
 }
 
 function populateZones(){
-  const zones=[...new Set(bins.map(b=>b.bin.split('-')[0]).filter(Boolean))].sort();
+  const zones=Array.from(new Set(bins.map(function(b){return b.bin.split('-')[0];}).filter(Boolean))).sort();
   ['dash-zone','bin-zone'].forEach(id=>{const sel=document.getElementById(id);if(!sel)return;const cur=sel.value;sel.innerHTML='<option value="">All zones</option>'+zones.map(z=>`<option value="${z}"${z===cur?' selected':''}>${z}</option>`).join('');});
 }
 function renderDashboard(){
@@ -542,7 +542,7 @@ function renderBins(){
 function renderExpiry(){
   const crit=bins.filter(b=>['crit','expired'].includes(expStatus(b.expiry))).sort((a,b)=>new Date(a.expiry)-new Date(b.expiry));
   const warn=bins.filter(b=>expStatus(b.expiry)==='warn').sort((a,b)=>new Date(a.expiry)-new Date(b.expiry));
-  document.getElementById('exp-metrics').innerHTML=`<div class="metric danger"><div class="m-val">${crit.length}</div><div class="m-lbl">Critical / expired</div></div><div class="metric warning"><div class="m-val">${warn.length}</div><div class="m-lbl">Warning bins</div></div><div class="metric"><div class="m-val">${[...crit,...warn].reduce((s,b)=>s+b.qty,0).toLocaleString()}</div><div class="m-lbl">Expiring units</div></div>`;
+  document.getElementById('exp-metrics').innerHTML=`<div class="metric danger"><div class="m-val">${crit.length}</div><div class="m-lbl">Critical / expired</div></div><div class="metric warning"><div class="m-val">${warn.length}</div><div class="m-lbl">Warning bins</div></div><div class="metric"><div class="m-val">${crit.concat(warn).reduce(function(s,b){return s+b.qty;},0).toLocaleString()}</div><div class="m-lbl">Expiring units</div></div>`;
   document.getElementById('exp-crit-tbody').innerHTML=crit.length?crit.map(b=>`<tr class="tr-crit"><td><strong>${b.bin}</strong></td><td>${b.sku}</td><td>${b.qty.toLocaleString()}</td><td>${fmtDate(b.expiry)}</td><td style="font-weight:600;color:var(--danger)">${daysLeft(b.expiry)} days</td><td>${b.countby||'—'}</td><td><button class="btn btn-sm" onclick="prefillTransfer('${b.bin}','${b.sku}')">Transfer out</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty">No critical items ✓</td></tr>';
   document.getElementById('exp-warn-tbody').innerHTML=warn.length?warn.map(b=>`<tr class="tr-warn"><td><strong>${b.bin}</strong></td><td>${b.sku}</td><td>${b.qty.toLocaleString()}</td><td>${fmtDate(b.expiry)}</td><td style="color:var(--warn)">${daysLeft(b.expiry)} days</td><td>${b.countby||'—'}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">No warning items ✓</td></tr>';
 }
@@ -559,14 +559,14 @@ async function deleteLog(id){if(!confirm('Delete log entry?'))return;await db.co
 
 function exportCSV(type){
   let rows,filename;
-  if(type==='bins'){rows=[['Bin','SKU','Qty','Expiry','Count By','Validated By','Last Update','Expiry Status'],...bins.map(b=>[b.bin,b.sku,b.qty,b.expiry||'',b.countby||'',b.valby||'',b.updated||'',expStatus(b.expiry)])];filename='stockflow-bins.csv';}
-  else if(type==='expiry'){const items=bins.filter(b=>['crit','warn','expired'].includes(expStatus(b.expiry))).sort((a,b)=>new Date(a.expiry)-new Date(b.expiry));rows=[['Bin','SKU','Qty','Expiry Date','Days Left','Status','Count By'],...items.map(b=>[b.bin,b.sku,b.qty,b.expiry,daysLeft(b.expiry),expStatus(b.expiry),b.countby||''])];filename='stockflow-expiry.csv';}
+  if(type==='bins'){rows=[['Bin','SKU','Qty','Expiry','Count By','Validated By','Last Update','Expiry Status'],bins.map(function(b){return[b.bin,b.sku,b.qty,b.expiry||'',b.countby||'',b.valby||'',b.updated||'',expStatus(b.expiry)];})];filename='stockflow-bins.csv';}
+  else if(type==='expiry'){const items=bins.filter(b=>['crit','warn','expired'].includes(expStatus(b.expiry))).sort((a,b)=>new Date(a.expiry)-new Date(b.expiry));rows=[['Bin','SKU','Qty','Expiry Date','Days Left','Status','Count By'],items.map(function(b){return[b.bin,b.sku,b.qty,b.expiry,daysLeft(b.expiry),expStatus(b.expiry),b.countby||''];})];filename='stockflow-expiry.csv';}
   else if(type==='quarantine'){
     var qm=movements.filter(function(m){return m.type==='quarantine';});
-    rows=[['Date','Bin','SKU','Qty','Expiry','Reference','Entry By','Notes'],...qm.map(function(m){return[fmtDT(m.date),m.bin,m.sku,m.qty,m.expiry||'',m.ref||'',m.by,m.notes||''];})];
+    rows=[['Date','Bin','SKU','Qty','Expiry','Reference','Entry By','Notes']].concat(qm.map(function(m){return[fmtDT(m.date),m.bin,m.sku,m.qty,m.expiry||'',m.ref||'',m.by,m.notes||''];}));
     filename='stockflow-quarantine.csv';
   }
-  else{rows=[['Date','SKU','Type','From Bin','To Bin / Qty','Expiry','Reference','Entry By','Validated By','Notes']],...movements.map(m=>[fmtDT(m.date),m.sku,m.type,m.bin,m.type==='transfer'?m.toBin:m.qty,m.expiry||'',m.ref||'',m.by,m.valby||'',m.notes||''])];filename='stockflow-log.csv';}
+  else{rows=[['Date','SKU','Type','From Bin','To Bin / Qty','Expiry','Reference','Entry By','Validated By','Notes']].concat(movements.map(function(m){return[fmtDT(m.date),m.sku,m.type,m.bin,m.type==='transfer'?m.toBin:m.qty,m.expiry||'',m.ref||'',m.by,m.valby||'',m.notes||''];}));filename='stockflow-log.csv';}
   const csv=rows.map(r=>r.map(c=>'"'+(String(c||'').replace(/"/g,'""'))+'"').join(',')).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=filename;a.click();
 }
@@ -608,7 +608,7 @@ function renderQuarantine(){
   var search=(document.getElementById('quar-search')?.value||'').toLowerCase();
   var quarMoves=movements.filter(function(m){return m.type==='quarantine'&&(!search||m.sku.toLowerCase().includes(search)||m.bin.toLowerCase().includes(search));});
   var totalQty=quarMoves.reduce(function(s,m){return s+m.qty;},0);
-  var uniqueSKUs=[...new Set(quarMoves.map(function(m){return m.sku;}))].length;
+  var skuSet={};quarMoves.forEach(function(m){skuSet[m.sku]=1;});var uniqueSKUs=Object.keys(skuSet).length;
   document.getElementById('quar-metrics').innerHTML='<div class="metric warning"><div class="m-val">'+quarMoves.length+'</div><div class="m-lbl">Quarantine movements</div></div><div class="metric warning"><div class="m-val">'+uniqueSKUs+'</div><div class="m-lbl">Unique SKUs</div></div><div class="metric warning"><div class="m-val">'+totalQty.toLocaleString()+'</div><div class="m-lbl">Total units quarantined</div></div>';
   document.getElementById('quar-tbody').innerHTML=quarMoves.length
     ? quarMoves.map(function(m){return '<tr class="tr-warn"><td style="white-space:nowrap;font-size:12px">'+fmtDT(m.date)+'</td><td><strong>'+m.bin+'</strong></td><td>'+m.sku+'</td><td>'+m.qty.toLocaleString()+'</td><td>'+fmtDate(m.expiry)+'</td><td>'+(m.ref||'—')+'</td><td>'+m.by+'</td><td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(m.notes||'—')+'</td></tr>';}).join('')
